@@ -1,12 +1,12 @@
-import os
 import logging
+import os
+import time
 from contextlib import contextmanager
 from typing import Any, Iterable
-import time
 
-from psycopg import connect, OperationalError, DatabaseError
-from psycopg.rows import dict_row
 from dotenv import load_dotenv
+from psycopg import DatabaseError, OperationalError, connect
+from psycopg.rows import dict_row
 
 logger = logging.getLogger(__name__)
 load_dotenv("config.env")

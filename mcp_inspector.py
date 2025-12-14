@@ -4,7 +4,7 @@
 Features:
 - Start the `mcp_pagila_server.py` as a subprocess (same Python executable).
 - Send single or multiple JSON requests and print pretty JSON responses.
-- Interactive REPL for quick testing of methods: list_films, run_pagila_query, or raw JSON.
+- Interactive REPL for quick testing (list_films, run_pagila_query, raw JSON).
 
 Usage examples:
   # one-shot: list first 5 films
@@ -20,8 +20,8 @@ Usage examples:
 from __future__ import annotations
 
 import argparse
-import os
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -92,9 +92,15 @@ def repl(proc: subprocess.Popen) -> None:
         if s in ("q", "quit", "exit"):
             break
         if s == "help":
-            print(
-                "Commands:\n  list_films <limit>\n  run <SQL SELECT>\n  text2sql <natural language>\n  raw <JSON request>\n  quit"
+            help_text = (
+                "Commands:\n"
+                "  list_films <limit>\n"
+                "  run <SQL SELECT>\n"
+                "  text2sql <natural language>\n"
+                "  raw <JSON request>\n"
+                "  quit"
             )
+            print(help_text)
             continue
 
         if s.startswith("list_films"):
@@ -131,7 +137,8 @@ def repl(proc: subprocess.Popen) -> None:
                     continue
             if req is None:
                 print(
-                    'Invalid JSON for raw command. Try: raw {"id":1,...} or use proper shell quoting.'
+                    'Invalid JSON for raw command. Try: raw {"id":1,...} '
+                    "or use proper shell quoting."
                 )
                 continue
             resp = send_request(proc, req)
@@ -146,7 +153,10 @@ def main() -> int:
     parser.add_argument(
         "-c",
         "--command",
-        help="one-shot command: e.g. 'list_films 5' or 'run SELECT ...' or raw JSON starting with 'raw {...}'",
+        help=(
+            "one-shot command: e.g. 'list_films 5' or 'run SELECT ...' or "
+            "raw JSON starting with 'raw {...}'"
+        ),
     )
     args = parser.parse_args()
 
@@ -169,7 +179,8 @@ def main() -> int:
                         continue
                 if req is None:
                     print(
-                        'Invalid JSON for raw command. Try using proper quoting, e.g. -c \'raw {"id":1,...}\' or -c "raw {"id":1,...}"'
+                        "Invalid JSON for raw command. Try using proper quoting, "
+                        "e.g. -c 'raw {\"id\":1,...}'"
                     )
                     return 2
             elif s.startswith("list_films"):

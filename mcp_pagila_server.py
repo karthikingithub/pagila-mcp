@@ -2,12 +2,12 @@ import asyncio
 import json
 import logging
 import os
-import sys
-from decimal import Decimal
-from typing import Any, Dict
-import time
 import re
-from typing import Optional
+import sys
+import time
+from decimal import Decimal
+from logging.handlers import RotatingFileHandler
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 
@@ -30,8 +30,6 @@ formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)
 # Stream handler -> stderr
 sh = logging.StreamHandler(sys.stderr)
 sh.setFormatter(formatter)
-
-from logging.handlers import RotatingFileHandler
 
 # Rotating file handler (5 MB per file, keep 5 backups)
 fh = RotatingFileHandler(
@@ -244,7 +242,7 @@ async def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
             row_count,
             duration,
         )
-    except Exception as exc:
+    except Exception:
         duration = time.monotonic() - start
         logger.exception(
             "Request error id=%s method=%s duration=%.3fs", req_id, method, duration
@@ -262,7 +260,7 @@ async def server_loop() -> None:
     protocol = asyncio.StreamReaderProtocol(reader)
     await loop.connect_read_pipe(lambda: protocol, os.fdopen(0))
 
-    # No asyncio StreamWriter is created here; responses are written directly to stdout.buffer.
+    # No asyncio StreamWriter; write responses to stdout.buffer.
 
     while True:
         line = await reader.readline()
