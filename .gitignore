@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtualenvs
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs and runtime files
+logs/
+*.log
+
+# Local env / secrets
+config.env
+.env
+*.env
+
+# Inspector artifacts
+*.sqlite3
