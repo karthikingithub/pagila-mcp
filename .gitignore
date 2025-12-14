@@ -1,8 +1,7 @@
-# Python
+# Python artifacts
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
-*.pyd
 
 # Virtualenvs
 .venv/
@@ -10,18 +9,26 @@ venv/
 ENV/
 env/
 
-# IDEs
+# Editor/IDE
 .vscode/
 .idea/
 
 # Logs and runtime files
 logs/
 *.log
+*.sqlite3
 
 # Local env / secrets
 config.env
 .env
 *.env
+
+# Test / coverage / build
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
 
 # Inspector artifacts
 *.sqlite3
