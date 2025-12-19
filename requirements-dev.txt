@@ -1,10 +1,6 @@
-black==23.9.1
+black==24.4.0
 isort==5.12.0
-flake8==6.0.0
+flake8==6.1.0
 flake8-bugbear
-pre-commit
-black>=24.4.0,<25
-isort==5.12.0
-flake8>=6.2.0,<8
-pre-commit
+pre-commit>=4.0.0
 pytest

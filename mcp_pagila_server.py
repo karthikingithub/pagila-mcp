@@ -103,46 +103,76 @@ def _Text_to_sql_local(text: str, schema: Dict[str, list]) -> Dict[str, str]:
 
     # choose target table
     target = None
-    if "film" in t or "films" in t or "movie" in t or "movies" in t:
+    confident = True
+    # explicit category request
+    if "category" in t or "categories" in t:
+        target = "category"
+    # explicit actor/cast request
+    elif "actor" in t or "actors" in t or "cast" in t:
+        target = "actor"
+    # explicit film request
+    elif "film" in t or "films" in t or "movie" in t or "movies" in t:
         target = "film"
     else:
-        # fallback to film
+        # fallback to film but mark as not confident
         target = "film"
+        confident = False
 
     cols = schema.get(target, [])
-
     # select columns
     select_cols = "*"
-    wants_title = any(k in t for k in ("title", "titles", "name")) and "title" in cols
-    wants_year = (
-        any(k in t for k in ("year", "released", "release")) and "release_year" in cols
-    )
-    wants_rate = "rental" in t and "rental_rate" in cols
-    if wants_title or wants_year or wants_rate:
-        parts = []
-        if wants_title:
-            parts.append("title")
-        if wants_year:
-            parts.append("release_year")
-        if wants_rate:
-            parts.append("rental_rate")
-        select_cols = ", ".join(parts)
+    # special-case category requests to return the category name
+    if target == "category":
+        select_cols = "name" if "name" in cols else "*"
+        wants_title = False
+        wants_year = False
+        wants_rate = False
+    elif target == "actor":
+        # prefer first_name + last_name for actors
+        if "first_name" in cols and "last_name" in cols:
+            select_cols = "first_name, last_name"
+        else:
+            select_cols = "*"
+        wants_title = False
+        wants_year = False
+        wants_rate = False
+    else:
+        wants_title = (
+            any(k in t for k in ("title", "titles", "name")) and "title" in cols
+        )
+        wants_year = (
+            any(k in t for k in ("year", "released", "release"))
+            and "release_year" in cols
+        )
+        wants_rate = "rental" in t and "rental_rate" in cols
+        if wants_title or wants_year or wants_rate:
+            parts = []
+            if wants_title:
+                parts.append("title")
+            if wants_year:
+                parts.append("release_year")
+            if wants_rate:
+                parts.append("rental_rate")
+            select_cols = ", ".join(parts)
 
     where_clauses = []
+    params: list = []
 
-    # capture 4-digit year
+    # capture 4-digit year (parameterized)
     m = re.search(r"(19|20)\d{2}", t)
     if m and wants_year:
-        year = m.group(0)
-        where_clauses.append(f"release_year = {year}")
+        year = int(m.group(0))
+        where_clauses.append("release_year = %s")
+        params.append(year)
 
-    # quoted phrase -> search in title
+    # quoted phrase -> search in title (parameterized)
     m2 = re.search(r"['\"]([\w \-]+)['\"]", text)
     if m2 and "title" in cols:
-        phrase = m2.group(1).replace("'", "''")
-        where_clauses.append(f"title ILIKE '%{phrase}%'")
+        phrase = m2.group(1)
+        where_clauses.append("title ILIKE %s")
+        params.append(f"%{phrase}%")
 
-    # limit
+    # limit (parameterized)
     limit = None
     m3 = re.search(r"limit\s+(\d+)", t)
     if m3:
@@ -151,13 +181,16 @@ def _Text_to_sql_local(text: str, schema: Dict[str, list]) -> Dict[str, str]:
     sql = f"SELECT {select_cols} FROM {target}"
     if where_clauses:
         sql += " WHERE " + " AND ".join(where_clauses)
+    # apply safe limit (parameterized)
     if limit:
-        sql += f" LIMIT {limit}"
+        sql += " LIMIT %s"
+        params.append(limit)
     else:
-        # default small limit for safety
-        sql += " LIMIT 50"
+        sql += " LIMIT %s"
+        params.append(50)
 
-    return {"sql": sql, "note": note}
+    result = {"sql": sql, "params": params, "note": note, "confident": confident}
+    return result
 
 
 async def handle_text_to_sql(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -182,11 +215,20 @@ async def handle_text_to_sql(params: Dict[str, Any]) -> Dict[str, Any]:
 
     generated = _Text_to_sql_local(text, schema)
     sql = generated.get("sql")
+    params_for_sql = generated.get("params") or []
 
-    result: Dict[str, Any] = {"sql": sql, "note": generated.get("note")}
+    result: Dict[str, Any] = {
+        "sql": sql,
+        "params": params_for_sql,
+        "note": generated.get("note"),
+        "confident": generated.get("confident", True),
+    }
     if execute:
         start = time.monotonic()
-        rows = await asyncio.to_thread(run_query, sql, None)
+        # pass params to run_query so the driver can handle escaping
+        rows = await asyncio.to_thread(
+            run_query, sql, params_for_sql if params_for_sql else None
+        )
         duration = time.monotonic() - start
         result["rows"] = rows
         result["duration"] = duration
@@ -201,18 +243,101 @@ async def handle_text_to_sql(params: Dict[str, Any]) -> Dict[str, Any]:
 
 async def handle_run_pagila_query(params: Dict[str, Any]) -> Dict[str, Any]:
     query = params.get("query", "")
-    if not isinstance(query, str) or not query.strip().lower().startswith("select"):
+    if not isinstance(query, str):
+        raise ValueError("Query must be a string")
+
+    qstr = query.strip()
+    # disallow multiple statements or trailing/pipelined commands
+    if ";" in qstr.replace("\n", " ") and not qstr.rstrip().endswith(";"):
+        # presence of semicolon anywhere (other than possibly at end) is suspicious
+        raise ValueError("Multiple statements are not allowed")
+
+    # normalize for check
+    qnorm = qstr.lstrip().lower()
+    if not qnorm.startswith("select"):
         raise ValueError("Only SELECT queries are allowed")
+
+    # basic blacklist to avoid destructive patterns
+    forbidden = ["drop ", "delete ", "update ", "insert ", ";--", "--", "/*"]
+    for bad in forbidden:
+        if bad in qnorm:
+            raise ValueError("Query contains disallowed patterns")
+
+    # execute safely (no params since this is a raw SQL path)
+    # then cap rows to avoid huge responses
     start = time.monotonic()
     rows = await asyncio.to_thread(run_query, query, None)
     duration = time.monotonic() - start
+
+    MAX_ROWS = int(os.getenv("MCP_MAX_ROWS", "1000"))
+    note = None
+    if isinstance(rows, list) and len(rows) > MAX_ROWS:
+        note = f"Truncated results to first {MAX_ROWS} rows"
+        rows = rows[:MAX_ROWS]
+
+    # log with a truncated query to avoid overly long log lines
+    if len(query) < 200:
+        truncated_query = query
+    else:
+        truncated_query = query[:200] + "..."
     logger.debug(
         "handle_run_pagila_query finished query=%r rows=%d duration=%.3fs",
-        query if len(query) < 200 else query[:200] + "...",
+        truncated_query,
         len(rows) if isinstance(rows, list) else -1,
         duration,
     )
-    return {"rows": rows}
+    result = {"rows": rows}
+    if note:
+        result["note"] = note
+    return result
+
+
+async def handle_execute_sql(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute parameterized SQL provided as {'sql': str, 'params': [..]}.
+    This is safer for client-side generated SQL that includes placeholders.
+    """
+    sql = params.get("sql")
+    sql_params = params.get("params")
+    if not isinstance(sql, str):
+        raise ValueError("'sql' must be a string")
+
+    qstr = sql.strip()
+    qnorm = qstr.lstrip().lower()
+    if not qnorm.startswith("select"):
+        raise ValueError("Only SELECT queries are allowed")
+
+    # basic blacklist
+    forbidden = ["drop ", "delete ", "update ", "insert ", ";--", "--", "/*"]
+    for bad in forbidden:
+        if bad in qnorm:
+            raise ValueError("Query contains disallowed patterns")
+
+    # execute with params (may be None)
+    start = time.monotonic()
+    rows = await asyncio.to_thread(
+        run_query, sql, tuple(sql_params) if sql_params else None
+    )
+    duration = time.monotonic() - start
+
+    MAX_ROWS = int(os.getenv("MCP_MAX_ROWS", "1000"))
+    note = None
+    if isinstance(rows, list) and len(rows) > MAX_ROWS:
+        note = f"Truncated results to first {MAX_ROWS} rows"
+        rows = rows[:MAX_ROWS]
+
+    # log timing for execute_sql for diagnostics
+    truncated_sql = sql if len(sql) < 200 else sql[:200] + "..."
+    logger.debug(
+        "handle_execute_sql finished sql=%r rows=%d duration=%.3fs",
+        truncated_sql,
+        len(rows) if isinstance(rows, list) else -1,
+        duration,
+    )
+
+    result = {"rows": rows}
+    if note:
+        result["note"] = note
+    return result
 
 
 async def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
@@ -227,6 +352,8 @@ async def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
             result = await handle_list_films(params)
         elif method == "run_pagila_query":
             result = await handle_run_pagila_query(params)
+        elif method == "execute_sql":
+            result = await handle_execute_sql(params)
         elif method == "text_to_sql":
             result = await handle_text_to_sql(params)
         else:

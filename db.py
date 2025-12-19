@@ -51,7 +51,14 @@ def run_query(query: str, params: Iterable[Any] | None = None):
             with conn.cursor(row_factory=dict_row) as cur:
                 logger.debug("Executing query: %s params=%s", query, params)
                 start = time.monotonic()
-                cur.execute(query, tuple(params or ()))
+                # psycopg's execute treats percent-signs in the query as
+                # placeholders when a params sequence is provided. If no
+                # params are given, call execute(query) to avoid parsing
+                # literal %% patterns (for example in ILIKE '%love%').
+                if params:
+                    cur.execute(query, tuple(params))
+                else:
+                    cur.execute(query)
                 rows = cur.fetchall()
                 duration = time.monotonic() - start
                 logger.info(
