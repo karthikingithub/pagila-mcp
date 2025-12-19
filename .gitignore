@@ -1,3 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtualenv
+.venv/
+venv/
+ENV/
+env/
+
+# Byte-compiled / optimized / DLL files
+*.so
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# Test/coverage
+.pytest_cache/
+.tox/
+.coverage
+coverage.xml
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Logs
+logs/
+
+# Local env / secrets
+config.env
+.env
+.env.*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Misc
+# SQLite DBs
+*.sqlite3
 # Python artifacts
 __pycache__/
 *.py[cod]
