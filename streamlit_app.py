@@ -54,9 +54,7 @@ def _start_server() -> tuple[subprocess.Popen, Queue]:
     return proc, stderr_q
 
 
-def _send_request(
-    proc: subprocess.Popen, request: dict, timeout: float = 10.0
-) -> Optional[dict]:
+def _send_request(proc: subprocess.Popen, request: dict) -> Optional[dict]:
     assert proc.stdin is not None and proc.stdout is not None
     line = json.dumps(request, default=str) + "\n"
     try:
@@ -152,11 +150,7 @@ with st.sidebar:
     st.markdown("---")
     st.header("Options")
     execute_sql = st.checkbox("Execute generated SQL", value=False)
-    auto_exec_confident = st.checkbox(
-        "Auto-execute only if confident",
-        value=True,
-        help="Only auto-run generated SQL when the generator reports high confidence",
-    )
+
     st.info("When checked, `text_to_sql` results will be executed and rows returned.")
     st.markdown("---")
 
@@ -426,41 +420,41 @@ with col1:
 
     # render newest block first
     for block in reversed(blocks):
+        st.markdown("---")
         for msg in block:
             role = msg.get("role")
             text = msg.get("text")
             meta = msg.get("meta", {})
             ts = msg.get("ts")
-        # separator and relative timestamp
-        st.markdown("---")
-        if ts:
-            st.caption(_fmt_relative(ts))
+            # separator and relative timestamp
+            if ts:
+                st.caption(_fmt_relative(ts))
 
-        # lightweight avatar using native Streamlit columns (faster than HTML)
-        av_col, msg_col = st.columns([0.07, 0.93])
-        with av_col:
-            if role == "user":
-                st.markdown("**You**")
-            else:
-                st.markdown("**AI**")
-        with msg_col:
-            # render message text plainly (faster); preserve code blocks below
-            try:
-                st.write(text)
-            except Exception:
-                st.text(text)
+            # lightweight avatar using native Streamlit columns (faster than HTML)
+            av_col, msg_col = st.columns([0.07, 0.93])
+            with av_col:
+                if role == "user":
+                    st.markdown("**You**")
+                else:
+                    st.markdown("**AI**")
+            with msg_col:
+                # render message text plainly (faster); preserve code blocks below
+                try:
+                    st.write(text)
+                except Exception:
+                    st.text(text)
 
-        if meta.get("sql"):
-            st.code(meta["sql"], language="sql")
-        if meta.get("note"):
-            st.info(meta.get("note"))
-        if meta.get("error"):
-            st.error(meta.get("error"))
-        if meta.get("rows"):
-            try:
-                st.dataframe(meta["rows"])
-            except Exception:
-                st.write(meta["rows"])
+            if meta.get("sql"):
+                st.code(meta["sql"], language="sql")
+            if meta.get("note"):
+                st.info(meta.get("note"))
+            if meta.get("error"):
+                st.error(meta.get("error"))
+            if meta.get("rows"):
+                try:
+                    st.dataframe(meta["rows"])
+                except Exception:
+                    st.write(meta["rows"])
 
 with col2:
     st.subheader("Details / Last response")
@@ -472,12 +466,3 @@ with col2:
 
 st.markdown("---")
 st.markdown("Local run: `python -m streamlit run streamlit_app.py`")
-
-
-def _cleanup():
-    proc = st.session_state.get("mcp_proc")
-    if proc and proc.poll() is None:
-        try:
-            proc.terminate()
-        except Exception:
-            pass

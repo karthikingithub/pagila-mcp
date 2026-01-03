@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 from db import run_query
 
-load_dotenv("config.env")
+load_dotenv("config.env", override=True)
 
 # Configure logging: stream to stderr + rotating file handler in logs/
 LOG_DIR = os.getenv("LOG_DIR", "logs")
@@ -72,6 +72,41 @@ async def handle_list_films(params: Dict[str, Any]) -> Dict[str, Any]:
         duration,
     )
     return {"rows": rows}
+
+
+async def handle_list_tables(params: Dict[str, Any]) -> Dict[str, Any]:
+    """List all public tables in the database."""
+    sql = """
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_type = 'BASE TABLE'
+        ORDER BY table_name
+    """
+    rows = await asyncio.to_thread(run_query, sql, None)
+    return {"tables": [r["table_name"] for r in rows]}
+
+
+async def handle_get_table_schema(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Get column definitions for a specific list of tables."""
+    table_names = params.get("table_names", [])
+    if isinstance(table_names, str):
+        table_names = [table_names]
+
+    if not table_names:
+        return {"schema": "No tables specified."}
+
+    # Parameterized IN clause
+    placeholders = ",".join(["%s"] * len(table_names))
+    sql = f"""
+        SELECT table_name, column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name IN ({placeholders})
+        ORDER BY table_name, ordinal_position
+    """
+    rows = await asyncio.to_thread(run_query, sql, tuple(table_names))
+    return {"schema_rows": rows}
 
 
 async def _get_schema_info() -> Dict[str, list]:
@@ -257,6 +292,9 @@ async def handle_run_pagila_query(params: Dict[str, Any]) -> Dict[str, Any]:
     if not qnorm.startswith("select"):
         raise ValueError("Only SELECT queries are allowed")
 
+    # SECURITY NOTE: This blacklist is a secondary defense.
+    # The primary defense MUST be a database user with READ-ONLY permissions
+    # (GRANT SELECT only).
     # basic blacklist to avoid destructive patterns
     forbidden = ["drop ", "delete ", "update ", "insert ", ";--", "--", "/*"]
     for bad in forbidden:
@@ -306,6 +344,9 @@ async def handle_execute_sql(params: Dict[str, Any]) -> Dict[str, Any]:
     if not qnorm.startswith("select"):
         raise ValueError("Only SELECT queries are allowed")
 
+    # SECURITY NOTE: This blacklist is a secondary defense.
+    # The primary defense MUST be a database user with READ-ONLY permissions
+    # (GRANT SELECT only).
     # basic blacklist
     forbidden = ["drop ", "delete ", "update ", "insert ", ";--", "--", "/*"]
     for bad in forbidden:
@@ -350,6 +391,10 @@ async def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
     try:
         if method == "list_films":
             result = await handle_list_films(params)
+        elif method == "list_tables":
+            result = await handle_list_tables(params)
+        elif method == "get_table_schema":
+            result = await handle_get_table_schema(params)
         elif method == "run_pagila_query":
             result = await handle_run_pagila_query(params)
         elif method == "execute_sql":

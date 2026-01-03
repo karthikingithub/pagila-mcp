@@ -78,3 +78,7 @@ build/
 
 # Inspector artifacts
 *.sqlite3
+
+# Local Data
+vector_store/
+usage_stats.json

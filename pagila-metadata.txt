@@ -1,0 +1,40 @@
+DATABASE METADATA - PAGILA (PostgreSQL)
+
+CORE TABLES:
+- actor (actor_id, first_name, last_name, last_update)
+- film (film_id, title, description, release_year, language_id, rental_duration, rental_rate, length, replacement_cost, rating, special_features, fulltext)
+- category (category_id, name, last_update)
+- language (language_id, name, last_update)
+- film_actor (actor_id, film_id, last_update)
+- film_category (film_id, category_id, last_update)
+
+CUSTOMER & LOCATION:
+- customer (customer_id, store_id, first_name, last_name, email, address_id, activebool, create_date, active)
+- address (address_id, address, address2, district, city_id, postal_code, phone)
+- city (city_id, city, country_id)
+- country (country_id, country)
+- store (store_id, manager_staff_id, address_id)
+- staff (staff_id, first_name, last_name, address_id, email, store_id, active, username, password, picture)
+
+OPERATIONS:
+- inventory (inventory_id, film_id, store_id)
+- rental (rental_id, rental_date, inventory_id, customer_id, return_date, staff_id)
+- payment (payment_id, customer_id, staff_id, rental_id, amount, payment_date)
+
+RELATIONSHIPS (JOIN PATHS):
+- film_actor: film.film_id <-> actor.actor_id
+- film_category: film.film_id <-> category.category_id
+- inventory: film.film_id -> inventory.film_id
+- rental: inventory.inventory_id -> rental.inventory_id
+- payment: rental.rental_id -> payment.rental_id
+- customer: store.store_id -> customer.store_id
+- staff: store.store_id -> staff.store_id
+- address chain: customer/staff/store -> address -> city -> country
+
+USEFUL VIEWS:
+- sales_by_store: Total sales per store (store, manager, total_sales).
+- sales_by_film_category: Total sales per category.
+- customer_list: Customer details with full address.
+- film_list: Film details with actors and category.
+- staff_list: Staff details with address and store.
+- actor_info: Actor details with list of films.
