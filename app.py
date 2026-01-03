@@ -338,8 +338,8 @@ if user_question := st.chat_input(placeholder):
                 results = st.session_state.sql_collection.query(
                     query_embeddings=[embedding], n_results=1
                 )
-                # Distance threshold (lower is better). 0.4 is a heuristic for "similar enough"
-                if results["documents"] and results["distances"][0][0] < 0.4:
+                # Distance threshold (lower is better). 0.2 is very strict to prevent false positives
+                if results["documents"] and results["distances"][0][0] < 0.2:
                     cached_sql = results["metadatas"][0][0]["sql"]
             except Exception:
                 pass  # Cache miss or error, proceed to agent
